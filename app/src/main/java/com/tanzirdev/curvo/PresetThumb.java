@@ -5,6 +5,7 @@ import android.graphics.Canvas;
 import android.graphics.Path;
 import android.view.View;
 
+/** Small rounded tile that previews a style preset or a shape. */
 public class PresetThumb extends View {
     private final Layer l = new Layer();
     private final Path clip = new Path();
@@ -20,6 +21,16 @@ public class PresetThumb extends View {
         l.pts.add(new float[]{0.90f, 0.68f});
         Presets.apply(l, p);
         if (p.dash == 0f) l.width = Math.max(l.width, 0.045f);
+    }
+
+    public PresetThumb(Context c, Shapes.S s) {
+        super(c);
+        dp = c.getResources().getDisplayMetrics().density;
+        setLayerType(LAYER_TYPE_SOFTWARE, null);
+        for (float[] q : s.p) l.pts.add(new float[]{q[0], q[1]});
+        l.smooth = s.smooth;
+        Presets.apply(l, Presets.ALL[0]);
+        l.width = 0.05f;
     }
 
     @Override

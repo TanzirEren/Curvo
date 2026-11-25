@@ -5,6 +5,7 @@ import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PathMeasure;
@@ -15,7 +16,7 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import java.util.List;
 
-/** Draws ribbons as filled polygons, so the start and end are always flat (plain) unless "round" is on. */
+/** Draws ribbons as filled polygons, so the start and end are always flat unless "round" is on. */
 public class Renderer {
 
     public static Path curvePath(Layer l, float size) {
@@ -84,11 +85,34 @@ public class Renderer {
         }
     }
 
+    /** Simple version: canvas square at (0,0), no transform. */
     public static void draw(Canvas c, Layer l, float size) {
+        draw(c, l, size, 0f, 0f, null, Math.round(size), Math.round(size));
+    }
+
+    /**
+     * Full version. The canvas square has side "size" and its top-left at (ox, oy) in world space.
+     * m maps world to screen (null = identity). w/h are the target surface size in pixels.
+     */
+    public static void draw(Canvas c, Layer l, float size, float ox, float oy, Matrix m, int w, int h) {
         if (!l.visible || l.pts.size() < 2) return;
         Path cp = curvePath(l, size);
         int a = Math.round(Math.max(0f, Math.min(1f, l.opacity)) * 255);
 
+        c.save();
+        if (m != null) c.concat(m);
+        c.translate(ox, oy);
+
+        if (l.shadow > 0.01f) {
+            Paint sp = new Paint(Paint.ANTI_ALIAS_FLAG);
+            sp.setColor(Color.BLACK);
+            sp.setAlpha(Math.round(a * 0.65f * Math.min(1f, l.shadow)));
+            sp.setMaskFilter(new BlurMaskFilter(Math.max(1f, (0.004f + l.shBlur * 0.05f) * size), BlurMaskFilter.Blur.NORMAL));
+            c.save();
+            c.translate(l.shDist * size * 0.03f, l.shDist * size * 0.05f);
+            drawShape(c, l, cp, size, sp, 0f);
+            c.restore();
+        }
         if (l.glow > 0.01f) {
             Paint g = new Paint(Paint.ANTI_ALIAS_FLAG);
             g.setColor(l.c1);
@@ -103,23 +127,7 @@ public class Renderer {
             drawShape(c, l, cp, size, o, l.outline * size * 0.03f);
         }
 
-        if (l.mask != null) {
-            int s = Math.max(1, Math.round(size));
-            Bitmap off = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
-            Canvas oc = new Canvas(off);
-            Paint m = new Paint(Paint.ANTI_ALIAS_FLAG);
-            m.setColor(Color.BLACK);
-            drawShape(oc, l, cp, size, m, 0f);
-            Paint x = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-            x.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
-            int bw = l.mask.getWidth(), bh = l.mask.getHeight(), side = Math.min(bw, bh);
-            Rect src = new Rect((bw - side) / 2, (bh - side) / 2, (bw + side) / 2, (bh + side) / 2);
-            oc.drawBitmap(l.mask, src, new RectF(0, 0, s, s), x);
-            Paint op = new Paint(Paint.FILTER_BITMAP_FLAG);
-            op.setAlpha(a);
-            c.drawBitmap(off, 0, 0, op);
-            off.recycle();
-        } else {
+        if (l.mask == null) {
             float[] f0 = l.pts.get(0), f1 = l.pts.get(l.pts.size() - 1);
             float x1 = f1[0] * size, y1 = f1[1] * size;
             if (Math.abs(x1 - f0[0] * size) + Math.abs(y1 - f0[1] * size) < 1f) x1 += 1f;
@@ -127,7 +135,34 @@ public class Renderer {
             f.setShader(new LinearGradient(f0[0] * size, f0[1] * size, x1, y1, l.c1, l.c2, Shader.TileMode.CLAMP));
             f.setAlpha(a);
             drawShape(c, l, cp, size, f, 0f);
+            c.restore();
+            return;
         }
+        c.restore();
+
+        // Masked layer: the image fills the ribbon, and only exists inside the canvas square.
+        RectF r = new RectF(ox, oy, ox + size, oy + size);
+        if (m != null) m.mapRect(r);
+        int L = Math.max(0, (int) Math.floor(r.left)), T = Math.max(0, (int) Math.floor(r.top));
+        int R = Math.min(w, (int) Math.ceil(r.right)), B = Math.min(h, (int) Math.ceil(r.bottom));
+        if (R <= L || B <= T) return;
+        Bitmap off = Bitmap.createBitmap(R - L, B - T, Bitmap.Config.ARGB_8888);
+        Canvas oc = new Canvas(off);
+        oc.translate(-L, -T);
+        if (m != null) oc.concat(m);
+        oc.translate(ox, oy);
+        Paint mp = new Paint(Paint.ANTI_ALIAS_FLAG);
+        mp.setColor(Color.BLACK);
+        drawShape(oc, l, cp, size, mp, 0f);
+        Paint x = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        x.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
+        int bw = l.mask.getWidth(), bh = l.mask.getHeight(), side = Math.min(bw, bh);
+        Rect src = new Rect((bw - side) / 2, (bh - side) / 2, (bw + side) / 2, (bh + side) / 2);
+        oc.drawBitmap(l.mask, src, new RectF(0, 0, size, size), x);
+        Paint op = new Paint(Paint.FILTER_BITMAP_FLAG);
+        op.setAlpha(a);
+        c.drawBitmap(off, L, T, op);
+        off.recycle();
     }
 
     public static Bitmap export(List<Layer> layers, int px, int bg) {
