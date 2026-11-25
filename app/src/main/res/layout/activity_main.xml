@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:fitsSystemWindows="true">
+
+    <com.tanzirdev.curvo.CurveView
+        android:id="@+id/canvas"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:layout_marginTop="84dp" android:layout_marginStart="16dp" android:layout_marginEnd="16dp"/>
+
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="56dp"
+        android:layout_gravity="top"
+        android:layout_marginTop="12dp" android:layout_marginStart="16dp" android:layout_marginEnd="16dp"
+        android:background="@drawable/glass_bar"
+        android:gravity="center_vertical" android:orientation="horizontal"
+        android:paddingStart="8dp" android:paddingEnd="8dp">
+        <ImageButton android:id="@+id/bUndo" android:layout_width="44dp" android:layout_height="44dp" android:src="@drawable/ic_undo" android:contentDescription="Undo" android:background="@drawable/btn_ripple" android:padding="10dp" android:scaleType="fitCenter"/>
+        <ImageButton android:id="@+id/bRedo" android:layout_width="44dp" android:layout_height="44dp" android:src="@drawable/ic_redo" android:contentDescription="Redo" android:background="@drawable/btn_ripple" android:padding="10dp" android:scaleType="fitCenter"/>
+        <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
+        <ImageButton android:id="@+id/bLayers" android:layout_width="44dp" android:layout_height="44dp" android:src="@drawable/ic_layers" android:contentDescription="Layers" android:background="@drawable/btn_ripple" android:padding="10dp" android:scaleType="fitCenter"/>
+        <ImageButton android:id="@+id/bExport" android:layout_width="44dp" android:layout_height="44dp" android:src="@drawable/ic_export" android:contentDescription="Export" android:background="@drawable/btn_ripple" android:padding="10dp" android:scaleType="fitCenter"/>
+    </LinearLayout>
+
+    <HorizontalScrollView
+        android:id="@+id/pPreset"
+        android:layout_width="match_parent" android:layout_height="106dp"
+        android:layout_gravity="bottom"
+        android:layout_marginStart="16dp" android:layout_marginEnd="16dp" android:layout_marginBottom="96dp"
+        android:background="@drawable/glass_panel"
+        android:scrollbars="none" android:visibility="gone">
+        <LinearLayout android:id="@+id/presetRow"
+            android:layout_width="wrap_content" android:layout_height="match_parent"
+            android:gravity="center_vertical" android:orientation="horizontal"
+            android:paddingStart="12dp" android:paddingEnd="12dp"/>
+    </HorizontalScrollView>
+
+    <LinearLayout
+        android:id="@+id/pColor"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginStart="16dp" android:layout_marginEnd="16dp" android:layout_marginBottom="96dp"
+        android:background="@drawable/glass_panel"
+        android:orientation="vertical" android:padding="14dp" android:visibility="gone"/>
+
+    <ScrollView
+        android:id="@+id/pEdit"
+        android:layout_width="match_parent" android:layout_height="250dp"
+        android:layout_gravity="bottom"
+        android:layout_marginStart="16dp" android:layout_marginEnd="16dp" android:layout_marginBottom="96dp"
+        android:background="@drawable/glass_panel"
+        android:visibility="gone">
+        <LinearLayout android:id="@+id/editBox"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:padding="14dp"/>
+    </ScrollView>
+
+    <LinearLayout
+        android:id="@+id/pLayers"
+        android:layout_width="match_parent" android:layout_height="250dp"
+        android:layout_gravity="bottom"
+        android:layout_marginStart="16dp" android:layout_marginEnd="16dp" android:layout_marginBottom="96dp"
+        android:background="@drawable/glass_panel"
+        android:orientation="vertical" android:padding="10dp" android:visibility="gone">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="40dp" android:gravity="end">
+            <ImageButton android:id="@+id/bAddLayer" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/ic_add" android:contentDescription="Add layer" android:background="@drawable/btn_ripple" android:padding="10dp" android:scaleType="fitCenter"/>
+        </LinearLayout>
+        <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+            <LinearLayout android:id="@+id/layerList" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical"/>
+        </ScrollView>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="64dp"
+        android:layout_gravity="bottom"
+        android:layout_marginStart="16dp" android:layout_marginEnd="16dp" android:layout_marginBottom="16dp"
+        android:background="@drawable/glass_bar"
+        android:gravity="center_vertical" android:orientation="horizontal"
+        android:paddingStart="6dp" android:paddingEnd="6dp">
+        <ImageButton android:id="@+id/bVector" android:layout_width="0dp" android:layout_height="52dp" android:layout_weight="1" android:src="@drawable/ic_vector" android:contentDescription="Vector" android:background="@drawable/btn_ripple" android:padding="14dp"/>
+        <ImageButton android:id="@+id/bPreset" android:layout_width="0dp" android:layout_height="52dp" android:layout_weight="1" android:src="@drawable/ic_preset" android:contentDescription="Presets" android:background="@drawable/btn_ripple" android:padding="14dp"/>
+        <ImageButton android:id="@+id/bColor" android:layout_width="0dp" android:layout_height="52dp" android:layout_weight="1" android:src="@drawable/ic_color" android:contentDescription="Colour" android:background="@drawable/btn_ripple" android:padding="14dp"/>
+        <ImageButton android:id="@+id/bEdit" android:layout_width="0dp" android:layout_height="52dp" android:layout_weight="1" android:src="@drawable/ic_edit" android:contentDescription="Edit" android:background="@drawable/btn_ripple" android:padding="14dp"/>
+        <ImageButton android:id="@+id/bMask" android:layout_width="0dp" android:layout_height="52dp" android:layout_weight="1" android:src="@drawable/ic_mask" android:contentDescription="Mask" android:background="@drawable/btn_ripple" android:padding="14dp"/>
+    </LinearLayout>
+</FrameLayout>
