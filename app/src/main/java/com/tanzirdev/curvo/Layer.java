@@ -37,12 +37,12 @@ public class Layer {
         return l;
     }
 
-    public void randomize(Random r) {
+    public void randomize(Random r, float aw, float ah) {
         pts.clear();
         int n = 4 + r.nextInt(2);
         for (int i = 0; i < n; i++) {
-            float x = 0.06f + 0.88f * i / (n - 1);
-            float y = 0.18f + 0.64f * r.nextFloat();
+            float x = aw * (0.06f + 0.88f * i / (n - 1));
+            float y = ah * (0.18f + 0.64f * r.nextFloat());
             pts.add(new float[]{x, y});
         }
     }

@@ -85,16 +85,17 @@ public class Renderer {
         }
     }
 
-    /** Simple version: canvas square at (0,0), no transform. */
+    /** Simple version: square canvas of side "size" at (0,0), no transform. */
     public static void draw(Canvas c, Layer l, float size) {
-        draw(c, l, size, 0f, 0f, null, Math.round(size), Math.round(size));
+        draw(c, l, size, 1f, 1f, 0f, 0f, null, Math.round(size), Math.round(size));
     }
 
     /**
-     * Full version. The canvas square has side "size" and its top-left at (ox, oy) in world space.
-     * m maps world to screen (null = identity). w/h are the target surface size in pixels.
+     * Full version. "size" = pixels per design unit (the canvas short side). The canvas is aw x ah units
+     * with its top-left at (ox, oy) in world space. m maps world to screen (null = identity).
      */
-    public static void draw(Canvas c, Layer l, float size, float ox, float oy, Matrix m, int w, int h) {
+    public static void draw(Canvas c, Layer l, float size, float aw, float ah,
+                            float ox, float oy, Matrix m, int w, int h) {
         if (!l.visible || l.pts.size() < 2) return;
         Path cp = curvePath(l, size);
         int a = Math.round(Math.max(0f, Math.min(1f, l.opacity)) * 255);
@@ -140,8 +141,9 @@ public class Renderer {
         }
         c.restore();
 
-        // Masked layer: the image fills the ribbon, and only exists inside the canvas square.
-        RectF r = new RectF(ox, oy, ox + size, oy + size);
+        // Masked layer: the image fills the ribbon and only exists inside the canvas rectangle.
+        float cwU = aw * size, chU = ah * size;
+        RectF r = new RectF(ox, oy, ox + cwU, oy + chU);
         if (m != null) m.mapRect(r);
         int L = Math.max(0, (int) Math.floor(r.left)), T = Math.max(0, (int) Math.floor(r.top));
         int R = Math.min(w, (int) Math.ceil(r.right)), B = Math.min(h, (int) Math.ceil(r.bottom));
@@ -156,20 +158,29 @@ public class Renderer {
         drawShape(oc, l, cp, size, mp, 0f);
         Paint x = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         x.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
-        int bw = l.mask.getWidth(), bh = l.mask.getHeight(), side = Math.min(bw, bh);
-        Rect src = new Rect((bw - side) / 2, (bh - side) / 2, (bw + side) / 2, (bh + side) / 2);
-        oc.drawBitmap(l.mask, src, new RectF(0, 0, size, size), x);
+        int bw = l.mask.getWidth(), bh = l.mask.getHeight();
+        float da = cwU / chU, ba = (float) bw / bh;
+        Rect src;
+        if (ba > da) {
+            int sw = Math.round(bh * da);
+            src = new Rect((bw - sw) / 2, 0, (bw + sw) / 2, bh);
+        } else {
+            int sh = Math.round(bw / da);
+            src = new Rect(0, (bh - sh) / 2, bw, (bh + sh) / 2);
+        }
+        oc.drawBitmap(l.mask, src, new RectF(0, 0, cwU, chU), x);
         Paint op = new Paint(Paint.FILTER_BITMAP_FLAG);
         op.setAlpha(a);
         c.drawBitmap(off, L, T, op);
         off.recycle();
     }
 
-    public static Bitmap export(List<Layer> layers, int px, int bg) {
-        Bitmap b = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888);
+    public static Bitmap export(List<Layer> layers, int pxW, int pxH, int bg, float aw, float ah) {
+        Bitmap b = Bitmap.createBitmap(pxW, pxH, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(b);
         if (bg != 0) c.drawColor(bg);
-        for (Layer l : layers) draw(c, l, px);
+        float unit = Math.min(pxW, pxH);
+        for (Layer l : layers) draw(c, l, unit, aw, ah, 0f, 0f, null, pxW, pxH);
         return b;
     }
 }

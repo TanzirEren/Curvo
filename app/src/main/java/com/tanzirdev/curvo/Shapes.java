@@ -21,9 +21,10 @@ public class Shapes {
         new S("Swirl",   new float[][]{{.20f,.50f},{.40f,.20f},{.70f,.30f},{.70f,.70f},{.40f,.80f},{.30f,.50f}}, 0.8f),
     };
 
-    public static void apply(Layer l, S s) {
+    /** Fits the shape to the canvas (aw x ah units). */
+    public static void apply(Layer l, S s, float aw, float ah) {
         l.pts.clear();
-        for (float[] q : s.p) l.pts.add(new float[]{q[0], q[1]});
+        for (float[] q : s.p) l.pts.add(new float[]{q[0] * aw, q[1] * ah});
         l.smooth = s.smooth;
     }
 }

@@ -16,34 +16,46 @@ import android.view.View;
 import java.util.ArrayList;
 
 /**
- * Work area: the canvas square sits in the middle of a bigger workspace. You can place points
- * outside the canvas; only the part inside the canvas square is exported.
- * One finger on empty space pans, two fingers pinch-zoom.
+ * Work area: the canvas rectangle sits in the middle of a bigger workspace. You can place points
+ * outside the canvas; only the part inside is exported. One finger on empty space pans, two fingers zoom.
+ * Tap a point to select it: a "Delete" bubble appears next to it.
  */
 public class CurveView extends View {
-    public interface Listener { void onBeforeChange(); void onChanged(); }
+    public interface Listener { void onBeforeChange(); void onChanged(); void onMessage(String m); }
 
     public ArrayList<Layer> layers = new ArrayList<>();
     public int active = 0;
     public boolean vectorMode = true;
     public int bgColor = 0;      // 0 = transparent
     public int gridMode = 0;     // 0 off, 1 grid, 2 grid + snap
+    public int canvasW = 2048, canvasH = 2048;   // export pixels at "Canvas" size
     public Listener listener;
 
     private final float dp;
     private float zoom = 1f, panX = 0f, panY = 0f;
-    private float cx, cy, cs;
+    private float cx, cy, u = 1f, cwW, chW;
     private final Matrix m = new Matrix();
     private final Paint chk = new Paint();
     private final Paint hFill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint hStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint selFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint selStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint guide = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint veil = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint gridP = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint bubbleP = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint bubbleStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint xP = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint textP = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path clip = new Path();
     private final Path veilPath = new Path();
     private final RectF rect = new RectF();
+    private final RectF bubble = new RectF();
+    private boolean bubbleOn;
+    private int selIdx = -1;
+    private Layer selLayer;
+    private boolean wasSelected;
     private int dragIdx = -1;
     private boolean moved, panning;
     private float downX, downY, lastX, lastY, lastFx, lastFy;
@@ -60,6 +72,10 @@ public class CurveView extends View {
         hStroke.setColor(0xFF0F9D75);
         hStroke.setStyle(Paint.Style.STROKE);
         hStroke.setStrokeWidth(2.5f * dp);
+        selFill.setColor(0xFF0F9D75);
+        selStroke.setColor(0xFFFFFFFF);
+        selStroke.setStyle(Paint.Style.STROKE);
+        selStroke.setStrokeWidth(3f * dp);
         guide.setColor(0x660F9D75);
         guide.setStyle(Paint.Style.STROKE);
         guide.setStrokeWidth(1.5f * dp);
@@ -73,17 +89,30 @@ public class CurveView extends View {
         gridP.setStyle(Paint.Style.STROKE);
         gridP.setStrokeWidth(1f * dp);
         chk.setColor(0xFFEEF3F0);
+        bubbleP.setColor(0xF7FFFFFF);
+        bubbleStroke.setStyle(Paint.Style.STROKE);
+        bubbleStroke.setStrokeWidth(1.5f * dp);
+        xP.setStyle(Paint.Style.STROKE);
+        xP.setStrokeWidth(2.6f * dp);
+        xP.setStrokeCap(Paint.Cap.ROUND);
+        textP.setTextSize(13 * dp);
+        textP.setFakeBoldText(true);
 
         gd = new GestureDetector(c, new GestureDetector.SimpleOnGestureListener() {
             @Override public boolean onDown(MotionEvent e) { return true; }
             @Override public boolean onSingleTapUp(MotionEvent e) {
-                if (vectorMode && hit(e.getX(), e.getY()) < 0) addPoint(e.getX(), e.getY());
+                validateSel();
+                float x = e.getX(), y = e.getY();
+                if (bubbleOn && bubble.contains(x, y)) { deleteSelected(); return true; }
+                if (!vectorMode) return true;
+                int hh = hit(x, y);
+                if (hh >= 0) {                 // tapping the selected point again deselects it
+                    if (wasSelected) selIdx = -1;
+                    invalidate();
+                    return true;
+                }
+                addPoint(x, y);
                 return true;
-            }
-            @Override public void onLongPress(MotionEvent e) {
-                if (!vectorMode || moved) return;
-                int i = hit(downX, downY);
-                if (i >= 0) deletePoint(i);
             }
         });
 
@@ -106,23 +135,44 @@ public class CurveView extends View {
         });
     }
 
+    // ------------------------------------------------------------ canvas size
+    /** Canvas width / height in design units (short side = 1). */
+    public float aw() { return canvasW >= canvasH ? (float) canvasW / canvasH : 1f; }
+    public float ah() { return canvasH >= canvasW ? (float) canvasH / canvasW : 1f; }
+
+    /** Changes the canvas size and keeps all drawings centred on the canvas. */
+    public void setCanvasSize(int w, int h) {
+        float oaw = aw(), oah = ah();
+        canvasW = w; canvasH = h;
+        float dx = (aw() - oaw) / 2f, dy = (ah() - oah) / 2f;
+        for (Layer l : layers) for (float[] p : l.pts) { p[0] += dx; p[1] += dy; }
+        fitView();
+    }
+
     public void fitView() {
         zoom = 1f; panX = 0f; panY = 0f;
         invalidate();
     }
 
     private void calc() {
-        float w = getWidth();
-        cs = w * 0.78f;
-        cx = (w - cs) / 2f;
-        cy = 84 * dp;
+        float w = getWidth(), h = getHeight();
+        float A = aw(), B = ah();
+        float boxW = w * 0.80f;
+        float boxH = Math.max(w * 0.8f, Math.min(h - 204 * dp, w * 1.1f));
+        u = Math.min(boxW / A, boxH / B);
+        cwW = A * u;
+        chW = B * u;
+        cx = (w - cwW) / 2f;
+        float slot = Math.max(chW, w * 0.8f);
+        cy = 84 * dp + (slot - chW) / 2f;
     }
 
-    private float nx(float sx) { return (((sx - panX) / zoom) - cx) / cs; }
-    private float ny(float sy) { return (((sy - panY) / zoom) - cy) / cs; }
-    private float sxOf(float n) { return panX + zoom * (cx + n * cs); }
-    private float syOf(float n) { return panY + zoom * (cy + n * cs); }
-    private static float clampN(float v) { return Math.max(-1f, Math.min(2f, v)); }
+    private float nx(float sx) { return (((sx - panX) / zoom) - cx) / u; }
+    private float ny(float sy) { return (((sy - panY) / zoom) - cy) / u; }
+    private float sxOf(float n) { return panX + zoom * (cx + n * u); }
+    private float syOf(float n) { return panY + zoom * (cy + n * u); }
+    private float clampX(float v) { return Math.max(-1f, Math.min(aw() + 1f, v)); }
+    private float clampY(float v) { return Math.max(-1f, Math.min(ah() + 1f, v)); }
     private float snap(float v) { return gridMode == 2 ? Math.round(v * 12f) / 12f : v; }
 
     private Layer act() {
@@ -130,45 +180,55 @@ public class CurveView extends View {
         return layers.get(Math.max(0, Math.min(active, layers.size() - 1)));
     }
 
+    private void validateSel() {
+        Layer a = act();
+        if (a != selLayer) { selLayer = a; selIdx = -1; }
+        if (a == null || selIdx >= a.pts.size()) selIdx = -1;
+    }
+
+    // ------------------------------------------------------------ drawing
     @Override
     protected void onDraw(Canvas canvas) {
         calc();
+        validateSel();
         float w = getWidth(), h = getHeight();
+        float A = aw(), B = ah();
         m.reset();
         m.postScale(zoom, zoom);
         m.postTranslate(panX, panY);
 
-        // canvas background (inside the export frame only)
         canvas.save();
         canvas.concat(m);
         clip.reset();
-        clip.addRoundRect(cx, cy, cx + cs, cy + cs, 16 * dp, 16 * dp, Path.Direction.CW);
+        clip.addRoundRect(cx, cy, cx + cwW, cy + chW, 16 * dp, 16 * dp, Path.Direction.CW);
         canvas.clipPath(clip);
         if (bgColor == 0) {
             canvas.drawColor(0xFFFFFFFF);
             float cell = 12 * dp;
-            int n = (int) (cs / cell) + 1;
-            for (int r = 0; r < n; r++)
-                for (int q = 0; q < n; q++)
+            int cols = (int) (cwW / cell) + 1, rowsN = (int) (chW / cell) + 1;
+            for (int r = 0; r < rowsN; r++)
+                for (int q = 0; q < cols; q++)
                     if (((r + q) & 1) == 0)
                         canvas.drawRect(cx + q * cell, cy + r * cell, cx + (q + 1) * cell, cy + (r + 1) * cell, chk);
         } else {
             canvas.drawColor(bgColor);
         }
         if (gridMode > 0) {
-            for (int i = 1; i < 12; i++) {
-                float t = cs * i / 12f;
-                canvas.drawLine(cx + t, cy, cx + t, cy + cs, gridP);
-                canvas.drawLine(cx, cy + t, cx + cs, cy + t, gridP);
+            int gx = (int) Math.floor(A * 12f - 0.001f), gy = (int) Math.floor(B * 12f - 0.001f);
+            for (int i = 1; i <= gx; i++) {
+                float t = u * i / 12f;
+                canvas.drawLine(cx + t, cy, cx + t, cy + chW, gridP);
+            }
+            for (int i = 1; i <= gy; i++) {
+                float t = u * i / 12f;
+                canvas.drawLine(cx, cy + t, cx + cwW, cy + t, gridP);
             }
         }
         canvas.restore();
 
-        // layers (drawn everywhere, also outside the canvas)
-        for (Layer l : layers) Renderer.draw(canvas, l, cs, cx, cy, m, (int) w, (int) h);
+        for (Layer l : layers) Renderer.draw(canvas, l, u, A, B, cx, cy, m, (int) w, (int) h);
 
-        // fade everything outside the canvas so it is clear what will be exported
-        rect.set(sxOf(0f), syOf(0f), sxOf(1f), syOf(1f));
+        rect.set(sxOf(0f), syOf(0f), sxOf(A), syOf(B));
         veilPath.reset();
         veilPath.setFillType(Path.FillType.EVEN_ODD);
         veilPath.addRect(0, 0, w, h, Path.Direction.CW);
@@ -177,18 +237,50 @@ public class CurveView extends View {
         canvas.drawRoundRect(rect, 16 * dp * zoom, 16 * dp * zoom, border);
 
         Layer a = act();
+        bubbleOn = false;
+        bubble.setEmpty();
         if (vectorMode && a != null && a.visible) {
             for (int i = 0; i < a.pts.size() - 1; i++) {
                 float[] p = a.pts.get(i), q = a.pts.get(i + 1);
                 canvas.drawLine(sxOf(p[0]), syOf(p[1]), sxOf(q[0]), syOf(q[1]), guide);
             }
-            for (float[] p : a.pts) {
+            for (int i = 0; i < a.pts.size(); i++) {
+                if (i == selIdx) continue;
+                float[] p = a.pts.get(i);
                 canvas.drawCircle(sxOf(p[0]), syOf(p[1]), 9 * dp, hFill);
                 canvas.drawCircle(sxOf(p[0]), syOf(p[1]), 9 * dp, hStroke);
+            }
+            if (selIdx >= 0) {
+                float[] p = a.pts.get(selIdx);
+                float px = sxOf(p[0]), py = syOf(p[1]);
+                canvas.drawCircle(px, py, 12 * dp, selFill);
+                canvas.drawCircle(px, py, 12 * dp, selStroke);
+                if (!(dragIdx >= 0 && moved)) drawBubble(canvas, a, px, py, w);
             }
         }
     }
 
+    private void drawBubble(Canvas canvas, Layer a, float px, float py, float w) {
+        float bw = 98 * dp, bh = 38 * dp;
+        float top = py - 18 * dp - bh;
+        if (top < 76 * dp) top = py + 18 * dp;
+        float left = Math.max(8 * dp, Math.min(w - 8 * dp - bw, px - bw / 2f));
+        bubble.set(left, top, left + bw, top + bh);
+        bubbleOn = true;
+        boolean can = a.pts.size() > 2;
+        int col = can ? 0xFFE5484D : 0xFF9AA8A2;
+        bubbleStroke.setColor(can ? 0x66E5484D : 0x449AA8A2);
+        canvas.drawRoundRect(bubble, bh / 2f, bh / 2f, bubbleP);
+        canvas.drawRoundRect(bubble, bh / 2f, bh / 2f, bubbleStroke);
+        float ix = left + 22 * dp, iy = top + bh / 2f, r = 5 * dp;
+        xP.setColor(col);
+        canvas.drawLine(ix - r, iy - r, ix + r, iy + r, xP);
+        canvas.drawLine(ix - r, iy + r, ix + r, iy - r, xP);
+        textP.setColor(col);
+        canvas.drawText("Delete", left + 38 * dp, iy - (textP.ascent() + textP.descent()) / 2f, textP);
+    }
+
+    // ------------------------------------------------------------ points
     private int hit(float x, float y) {
         Layer l = act();
         if (l == null) return -1;
@@ -206,7 +298,7 @@ public class CurveView extends View {
         Layer l = act();
         if (l == null) return;
         calc();
-        float px = snap(clampN(nx(x))), py = snap(clampN(ny(y)));
+        float px = snap(clampX(nx(x))), py = snap(clampY(ny(y)));
         int n = l.pts.size();
         int ins = n;
         if (n >= 2) {
@@ -227,44 +319,61 @@ public class CurveView extends View {
         }
         if (listener != null) listener.onBeforeChange();
         l.pts.add(ins, new float[]{px, py});
+        selLayer = l;
+        selIdx = ins;                 // the new point is selected, so a wrong tap can be deleted right away
         if (listener != null) listener.onChanged();
         invalidate();
     }
 
-    private void deletePoint(int i) {
+    private void deleteSelected() {
         Layer l = act();
-        if (l == null || l.pts.size() <= 2) return;
+        if (l == null || selIdx < 0 || selIdx >= l.pts.size()) return;
+        if (l.pts.size() <= 2) {
+            if (listener != null) listener.onMessage("A line needs at least 2 points");
+            return;
+        }
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
         if (listener != null) listener.onBeforeChange();
-        l.pts.remove(i);
+        l.pts.remove(selIdx);
+        selIdx = -1;
         if (listener != null) listener.onChanged();
         invalidate();
     }
 
+    // ------------------------------------------------------------ touch
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         sg.onTouchEvent(e);
-        int act = e.getActionMasked();
+        int action = e.getActionMasked();
         if (sg.isInProgress() || e.getPointerCount() > 1) {
             dragIdx = -1;
             moved = true;
-            if (act == MotionEvent.ACTION_POINTER_UP) {
+            if (action == MotionEvent.ACTION_POINTER_UP) {
                 int idx = e.getActionIndex() == 0 ? 1 : 0;
                 lastX = e.getX(idx); lastY = e.getY(idx);
                 panning = true;
             }
             return true;
         }
+        validateSel();
         gd.onTouchEvent(e);
         Layer l = act();
         float x = e.getX(), y = e.getY();
-        switch (act) {
-            case MotionEvent.ACTION_DOWN:
+        switch (action) {
+            case MotionEvent.ACTION_DOWN: {
                 downX = lastX = x; downY = lastY = y;
-                moved = false; panning = false;
-                dragIdx = vectorMode ? hit(x, y) : -1;
+                moved = false; panning = false; wasSelected = false;
+                if (bubbleOn && bubble.contains(x, y)) {
+                    dragIdx = -1;
+                } else {
+                    int hh = vectorMode ? hit(x, y) : -1;
+                    wasSelected = hh >= 0 && hh == selIdx;
+                    dragIdx = hh;
+                    if (hh >= 0) { selLayer = l; selIdx = hh; invalidate(); }
+                }
                 if (dragIdx >= 0 && getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
                 break;
+            }
             case MotionEvent.ACTION_MOVE:
                 if (dragIdx >= 0 && l != null && dragIdx < l.pts.size()) {
                     if (!moved) {
@@ -274,8 +383,8 @@ public class CurveView extends View {
                     }
                     calc();
                     float[] p = l.pts.get(dragIdx);
-                    p[0] = snap(clampN(nx(x)));
-                    p[1] = snap(clampN(ny(y)));
+                    p[0] = snap(clampX(nx(x)));
+                    p[1] = snap(clampY(ny(y)));
                     invalidate();
                 } else {
                     if (!panning) {
@@ -294,6 +403,7 @@ public class CurveView extends View {
                 if (moved && dragIdx >= 0 && listener != null) listener.onChanged();
                 dragIdx = -1;
                 panning = false;
+                invalidate();
                 break;
         }
         return true;
