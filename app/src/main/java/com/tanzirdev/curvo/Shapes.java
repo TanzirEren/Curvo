@@ -24,7 +24,7 @@ public class Shapes {
     /** Fits the shape to the canvas (aw x ah units). */
     public static void apply(Layer l, S s, float aw, float ah) {
         l.pts.clear();
-        for (float[] q : s.p) l.pts.add(new float[]{q[0] * aw, q[1] * ah});
+        for (float[] q : s.p) l.pts.add(new float[]{q[0] * aw, q[1] * ah, 1f});
         l.smooth = s.smooth;
     }
 }

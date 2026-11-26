@@ -48,5 +48,7 @@ public class Presets {
         l.c1 = p.c1; l.c2 = p.c2; l.outlineColor = p.oc;
         l.width = p.width; l.taper = p.taper; l.dash = p.dash;
         l.glow = p.glow; l.outline = p.outline; l.round = p.round;
+        l.mid.clear();
+        l.gradMode = 0;
     }
 }

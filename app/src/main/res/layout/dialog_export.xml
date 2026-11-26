@@ -31,10 +31,16 @@
         android:layout_marginTop="6dp" android:orientation="horizontal"/>
 
     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:layout_marginTop="14dp" android:text="SIZE (LONG SIDE)" android:textColor="#0F9D75"
+        android:layout_marginTop="14dp" android:id="@+id/exSizeLabel" android:text="SIZE (LONG SIDE)" android:textColor="#0F9D75"
         android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12"/>
     <LinearLayout android:id="@+id/exSizeRow" android:layout_width="match_parent" android:layout_height="wrap_content"
         android:layout_marginTop="6dp" android:orientation="horizontal"/>
+
+    <TextView android:id="@+id/exDurLabel" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_marginTop="14dp" android:text="DURATION" android:textColor="#0F9D75" android:visibility="gone"
+        android:textSize="11sp" android:textStyle="bold" android:letterSpacing="0.12"/>
+    <LinearLayout android:id="@+id/exDurRow" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="6dp" android:orientation="horizontal" android:visibility="gone"/>
 
     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
         android:layout_marginTop="14dp" android:text="FILE NAME" android:textColor="#0F9D75"
