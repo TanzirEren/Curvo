@@ -5,6 +5,8 @@ import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.ContentResolver;
 import android.content.ContentValues;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
@@ -33,6 +35,9 @@ import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
@@ -171,6 +176,7 @@ public class MainActivity extends Activity {
                 bDraw, bTrace, bSym, bPattern, bProjects};
         for (ImageButton ib : all) ib.setColorFilter(DARK);
 
+        installCrashReporter();
         loadSession();
         if (cv.layers.isEmpty()) { cv.layers.add(Layer.defaultLayer()); cv.active = 0; }
 
@@ -249,9 +255,46 @@ public class MainActivity extends Activity {
         if (projId != null) saveProject(projName, false, true);
     }
 
+    // ---------------------------------------------------------------- crash reporter
+    void installCrashReporter() {
+        final File f = new File(getFilesDir(), "crash.txt");
+        final Thread.UncaughtExceptionHandler old = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
+            try {
+                StringWriter sw = new StringWriter();
+                e.printStackTrace(new PrintWriter(sw));
+                FileOutputStream o = new FileOutputStream(f);
+                o.write(sw.toString().getBytes("UTF-8"));
+                o.close();
+            } catch (Throwable ignored) { }
+            if (old != null) old.uncaughtException(t, e);
+        });
+        if (f.exists()) {
+            try {
+                FileInputStream in = new FileInputStream(f);
+                ByteArrayOutputStream bo = new ByteArrayOutputStream();
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+                in.close();
+                f.delete();
+                final String trace = bo.toString("UTF-8");
+                getWindow().getDecorView().post(() -> new AlertDialog.Builder(this)
+                        .setTitle("Curvo closed unexpectedly last time")
+                        .setMessage(trace.length() > 1400 ? trace.substring(0, 1400) + "\n..." : trace)
+                        .setPositiveButton("Copy error", (dl, w) -> {
+                            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                            if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Curvo error", trace));
+                            Toast.makeText(this, "Copied. Paste it in the chat.", Toast.LENGTH_SHORT).show();
+                        })
+                        .setNegativeButton("Close", null).show());
+            } catch (Throwable ignored) { }
+        }
+    }
+
     // ---------------------------------------------------------------- helpers
     Layer curEd() {
-        Layer l = curEd();
+        Layer l = cur();
         if (l != null && l.locked) {
             Toast.makeText(this, "Layer is locked", Toast.LENGTH_SHORT).show();
             return null;
